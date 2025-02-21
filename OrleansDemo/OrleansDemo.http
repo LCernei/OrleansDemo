@@ -1,0 +1,6 @@
+@OrleansDemo_HostAddress = http://localhost:5047
+
+GET {{OrleansDemo_HostAddress}}/
+Accept: application/json
+
+###

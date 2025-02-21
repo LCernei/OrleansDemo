@@ -1,0 +1,6 @@
+﻿services:
+  orleansdemo:
+    image: orleansdemo
+    build:
+      context: .
+      dockerfile: OrleansDemo/Dockerfile
