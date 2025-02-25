@@ -13,14 +13,13 @@ builder.Host.UseOrleans(static siloBuilder =>
     siloBuilder.UseLocalhostClustering();
     siloBuilder.AddMemoryGrainStorage("urls");
     siloBuilder.UseDashboard();
+    siloBuilder.AddMemoryStreams("STR").AddMemoryGrainStorage("STR");
     siloBuilder.AddStartupTask((sp, ct) =>
     {
         var grains = sp.GetRequiredService<IGrainFactory>();
-
-        var instrument = grains.GetGrain<IInstrumentGrain>("7");
         var cell = grains.GetGrain<ICellGrain>("mid7");
 
-        return instrument.Subscribe(cell);
+        return cell.Activate();
     });
 });
 

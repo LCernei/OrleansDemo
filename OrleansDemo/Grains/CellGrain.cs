@@ -1,40 +1,51 @@
-namespace OrleansDemo.Grains;
+using Orleans;
+using Orleans.Streams;
+using Orleans.Runtime;
+using System;
+using System.Threading.Tasks;
+using OrleansDemo.Grains;
 
-public interface IChat : IGrainObserver
+public interface ICellGrain : IGrainWithStringKey
 {
-    Task ReceiveMessage(string message);
-}
-
-public interface ICellGrain: IGrainWithStringKey, IChat
-{
-    Task SetValue(string value);
+    Task Activate();
     Task Deactivate();
 }
 
-public sealed class CellGrain(
-    [PersistentState(stateName: "CellGrain", storageName: "urls")]
-    IPersistentState<CellState> state,
-    ILogger<CellGrain> logger)
-    : Grain, ICellGrain
+public class CellGrain([PersistentState("CellGrain", "urls")] IPersistentState<PriceUpdate> state, ILogger<CellGrain> logger) : Grain, ICellGrain
 {
-    public async Task SetValue(string value)
-    {
-        state.State.Value= value;
-        await state.WriteStateAsync();
-        logger.LogInformation("Cell {GrainId} set value to {Value}", this.GetPrimaryKeyString(), value);
-    }
+    public Task Activate() => Task.CompletedTask;
 
-    public Task ReceiveMessage(string message)
+    public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        return SetValue(message);
-    }
+        var instr = this.GetPrimaryKeyString().Replace("mid", "");
+        var streamId = StreamId.Create("STRN", instr);
+        
+        var streamProvider = this.GetStreamProvider("STR");
+        var stream = streamProvider.GetStream<PriceUpdate>(streamId);
 
-    public override Task OnActivateAsync(CancellationToken cancellationToken)
-    {
+        var handles = await stream.GetAllSubscriptionHandles();
+        var subscription = handles.FirstOrDefault(x => x.StreamId == streamId);
+        if (subscription is null)
+        {
+            await stream.SubscribeAsync(OnPriceUpdateReceived);
+        }
+        else
+        {
+            await subscription.ResumeAsync(OnPriceUpdateReceived);
+        }
+
         logger.LogInformation("Cell {GrainId} activated", this.GetPrimaryKeyString());
-        return base.OnActivateAsync(cancellationToken);
+
+        await base.OnActivateAsync(cancellationToken);
     }
 
+    private async Task OnPriceUpdateReceived(PriceUpdate update, StreamSequenceToken? token)
+    {
+        state.State = update;
+        await state.WriteStateAsync();
+        logger.LogInformation("Cell {GrainId} set value to {Value}", this.GetPrimaryKeyString(), state.State.Price);
+    }
+    
     public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
     {
         logger.LogInformation("Cell {GrainId} deactivated", this.GetPrimaryKeyString());
@@ -46,11 +57,4 @@ public sealed class CellGrain(
         DeactivateOnIdle();
         return Task.CompletedTask;
     }
-}
-
-[GenerateSerializer, Alias(nameof(CellState))]
-public sealed record class CellState
-{
-    [Id(0)]
-    public string Value { get; set; } = "";
 }

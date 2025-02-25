@@ -1,55 +1,59 @@
-using Orleans.Utilities;
+using Orleans.Streams;
 
 namespace OrleansDemo.Grains;
+
+[GenerateSerializer]
+public class PriceUpdate
+{
+    [Id(0)]
+    public string InstrumentId { get; set; }
+    [Id(1)]
+    public string Price { get; set; }
+    [Id(2)]
+    public DateTime Timestamp { get; set; }
+};
 
 public interface IInstrumentGrain : IGrainWithStringKey
 {
     Task SetPrice(string price);
-    Task Subscribe(IChat observer);
-    Task UnSubscribe(IChat observer);
     Task Deactivate();
 }
 
 public sealed class InstrumentGrain(
     [PersistentState(stateName: "InstrumentGrain", storageName: "urls")]
-    IPersistentState<UrlDetails> state,
+    IPersistentState<PriceUpdate> state,
     ILogger<InstrumentGrain> logger)
     : Grain, IInstrumentGrain
 {
-    private readonly ObserverManager<IChat> subsManager = new(TimeSpan.FromSeconds(30), logger);
-
+    private IAsyncStream<PriceUpdate> _stream;
+    
     public async Task SetPrice(string price)
     {
-        state.State.Price = price;
+        state.State = new PriceUpdate
+        {
+            InstrumentId = this.GetPrimaryKeyString(),
+            Price = price,
+            Timestamp = DateTime.UtcNow,
+        };
         await state.WriteStateAsync();
         
         logger.LogInformation("Instrument {GrainId} set price to {Price}", this.GetPrimaryKeyString(), price);
         
-        await SendUpdateMessage(price);
+        await SendUpdateMessage();
     }
     
-    // Clients call this to subscribe.
-    public Task Subscribe(IChat observer)
+    public Task SendUpdateMessage()
     {
-        subsManager.Subscribe(observer, observer);
-        return Task.CompletedTask;
-    }
-
-    //Clients use this to unsubscribe and no longer receive messages.
-    public Task UnSubscribe(IChat observer)
-    {
-        subsManager.Unsubscribe(observer);
-
-        return Task.CompletedTask;
-    }
-    
-    public Task SendUpdateMessage(string message)
-    {
-        return subsManager.Notify(s => s.ReceiveMessage(message));
+        return _stream.OnNextAsync(state.State);
     }
     
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
+        var streamId = StreamId.Create("STRN", this.GetPrimaryKeyString());
+        
+        var streamProvider = this.GetStreamProvider("STR");
+        _stream = streamProvider.GetStream<PriceUpdate>(streamId);
+        
         logger.LogInformation("Instrument {GrainId} activated", this.GetPrimaryKeyString());
         return base.OnActivateAsync(cancellationToken);
     }
@@ -65,11 +69,4 @@ public sealed class InstrumentGrain(
         DeactivateOnIdle();
         return Task.CompletedTask;
     }
-}
-
-[GenerateSerializer, Alias(nameof(UrlDetails))]
-public sealed record class UrlDetails
-{
-    [Id(0)]
-    public string Price { get; set; } = "";
 }
