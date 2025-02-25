@@ -1,4 +1,4 @@
-using Orleans.Streams;
+using Orleans.BroadcastChannel;
 
 namespace OrleansDemo.Grains;
 
@@ -22,11 +22,12 @@ public interface IInstrumentGrain : IGrainWithStringKey
 public sealed class InstrumentGrain(
     [PersistentState(stateName: "InstrumentGrain", storageName: "urls")]
     IPersistentState<PriceUpdate> state,
+    IBroadcastChannelProvider provider,
     ILogger<InstrumentGrain> logger)
     : Grain, IInstrumentGrain
 {
-    private IAsyncStream<PriceUpdate> _stream;
-    
+    private IBroadcastChannelWriter<PriceUpdate> channelWriter;
+
     public async Task SetPrice(string price)
     {
         state.State = new PriceUpdate
@@ -44,15 +45,13 @@ public sealed class InstrumentGrain(
     
     public Task SendUpdateMessage()
     {
-        return _stream.OnNextAsync(state.State);
+        return channelWriter.Publish(state.State);
     }
     
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        var streamId = StreamId.Create("STRN", this.GetPrimaryKeyString());
-        
-        var streamProvider = this.GetStreamProvider("STR");
-        _stream = streamProvider.GetStream<PriceUpdate>(streamId);
+        var channelId = ChannelId.Create("BR", this.GetPrimaryKeyString());
+        channelWriter = provider.GetChannelWriter<PriceUpdate>(channelId);
         
         logger.LogInformation("Instrument {GrainId} activated", this.GetPrimaryKeyString());
         return base.OnActivateAsync(cancellationToken);

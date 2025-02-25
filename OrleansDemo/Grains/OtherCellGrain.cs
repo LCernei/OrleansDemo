@@ -2,37 +2,37 @@ using Orleans.BroadcastChannel;
 using Orleans.Metadata;
 using OrleansDemo.Grains;
 
-public interface ICellGrain : IGrainWithStringKey
+public interface IOtherCellGrain : IGrainWithStringKey
 {
     Task Activate();
     Task Deactivate();
 }
 
-public class CellMapper : IChannelIdMapper
+public class OtherCellMapper : IChannelIdMapper
 {
-    public const string Name = "CellMapper";
+    public const string Name = "OtherCellMapper";
 
     public IdSpan GetGrainKeyId(GrainBindings grainBindings, ChannelId streamId)
     {
-        return IdSpan.Create("mid" + streamId.GetKeyAsString());
+        return IdSpan.Create("othermid" + streamId.GetKeyAsString());
     }
 }
 
-[ImplicitChannelSubscription("BR", CellMapper.Name)]
-public class CellGrain([PersistentState("CellGrain", "urls")] IPersistentState<PriceUpdate> state, ILogger<CellGrain> logger) : Grain, ICellGrain, IOnBroadcastChannelSubscribed
+[ImplicitChannelSubscription("BR", OtherCellMapper.Name)]
+public class OtherCellGrain([PersistentState("OtherCell", "urls")] IPersistentState<PriceUpdate> state, ILogger<CellGrain> logger) : Grain, IOtherCellGrain, IOnBroadcastChannelSubscribed
 {
     public Task Activate() => Task.CompletedTask;
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Cell {GrainId} activated", this.GetPrimaryKeyString());
+        logger.LogInformation("OtherCell {GrainId} activated", this.GetPrimaryKeyString());
 
         await base.OnActivateAsync(cancellationToken);
     }
     
     public override Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
     {
-        logger.LogInformation("Cell {GrainId} deactivated", this.GetPrimaryKeyString());
+        logger.LogInformation("OtherCell {GrainId} deactivated", this.GetPrimaryKeyString());
         return base.OnDeactivateAsync(reason, cancellationToken);
     }
     
@@ -51,7 +51,7 @@ public class CellGrain([PersistentState("CellGrain", "urls")] IPersistentState<P
     {
         state.State = update;
         await state.WriteStateAsync();
-        logger.LogInformation("Cell {GrainId} set value to {Value}", this.GetPrimaryKeyString(), state.State.Price);
+        logger.LogInformation("OtherCell {GrainId} set value to {Value}", this.GetPrimaryKeyString(), state.State.Price);
     }
 
     private Task OnError(Exception ex)

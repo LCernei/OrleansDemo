@@ -1,3 +1,4 @@
+using Orleans.BroadcastChannel;
 using OrleansDemo.Grains;
 using Serilog;
 using Serilog.Filters;
@@ -12,15 +13,15 @@ builder.Host.UseOrleans(static siloBuilder =>
 {
     siloBuilder.UseLocalhostClustering();
     siloBuilder.AddMemoryGrainStorage("urls");
+    siloBuilder.AddBroadcastChannel("BR");
     siloBuilder.UseDashboard();
-    siloBuilder.AddMemoryStreams("STR").AddMemoryGrainStorage("STR");
-    siloBuilder.AddStartupTask((sp, ct) =>
+    siloBuilder.Services.AddSingleton<IBroadcastChannelProvider>(sp =>
     {
-        var grains = sp.GetRequiredService<IGrainFactory>();
-        var cell = grains.GetGrain<ICellGrain>("mid7");
-
-        return cell.Activate();
+        var clusterClient = sp.GetRequiredService<IClusterClient>();
+        return clusterClient.GetBroadcastChannelProvider("BR");
     });
+    siloBuilder.Services.AddKeyedSingleton<IChannelIdMapper, OtherCellMapper>(OtherCellMapper.Name);
+    siloBuilder.Services.AddKeyedSingleton<IChannelIdMapper, CellMapper>(CellMapper.Name);
 });
 
 var app = builder.Build();
